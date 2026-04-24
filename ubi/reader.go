@@ -42,7 +42,16 @@ func (r *Reader) Close() error {
 }
 
 // Parse reads the UBI image structure
-func (r *Reader) Parse() (*Image, error) {
+func (r *Reader) Parse() (img *Image, err error) {
+	defer func() {
+		if rec := recover(); rec != nil {
+			err = fmt.Errorf("UBI parse panic: %v", rec)
+		}
+	}()
+	return r.parseInternal()
+}
+
+func (r *Reader) parseInternal() (*Image, error) {
 	img := &Image{
 		Volumes: make(map[int]*Volume),
 	}
@@ -122,7 +131,12 @@ func (r *Reader) Parse() (*Image, error) {
 }
 
 // ExtractVolume writes a volume's data to a file
-func (r *Reader) ExtractVolume(volID int, outputPath string) error {
+func (r *Reader) ExtractVolume(volID int, outputPath string) (err error) {
+	defer func() {
+		if rec := recover(); rec != nil {
+			err = fmt.Errorf("volume extraction panic: %v", rec)
+		}
+	}()
 	if r.image == nil {
 		return fmt.Errorf("call Parse() first")
 	}
@@ -216,6 +230,9 @@ func (r *Reader) readECHeader(offset int64) (*ECHeader, error) {
 	var ec ECHeader
 	
 	buf := make([]byte, UBI_EC_HDR_SIZE)
+	if offset < 0 || offset+int64(UBI_EC_HDR_SIZE) > r.size {
+		return nil, fmt.Errorf("offset %d out of bounds (size %d)", offset, r.size)
+	}
 	if _, err := r.file.ReadAt(buf, offset); err != nil {
 		return nil, err
 	}
