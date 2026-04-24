@@ -63,6 +63,6 @@ MIT
 
 ## Credits
 
-Built by [Naixi Networks](https://nyarc.bbie.net) for the [Nyarc](https://github.com/Nyarime/Nyarc) firmware security audit tool.
+Built by [Naixi Networks](https://naixi.net) for the [Nyarc](https://nyarc.bbie.net) firmware security audit tool.
 
 Inspired by [ubi_reader](https://github.com/onekey-sec/ubi_reader) (Python).

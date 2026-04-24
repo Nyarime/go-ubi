@@ -3,44 +3,120 @@ package main
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	
-	"github.com/Nyarime/go-ubi/ubi"
+	ubiPkg "github.com/Nyarime/go-ubi/ubi"
+	"github.com/Nyarime/go-ubi/ubifs"
 )
 
 func main() {
 	if len(os.Args) < 2 {
-		fmt.Println("Usage: ubi-extract <ubi-image> [output-dir]")
-		fmt.Println("  Extract UBI volumes from firmware image")
+		fmt.Println("go-ubi — Pure Go UBI/UBIFS reader")
+		fmt.Println()
+		fmt.Println("Usage:")
+		fmt.Println("  ubi-extract <ubi-image> [output-dir]")
+		fmt.Println("  ubi-extract --info <ubi-image>")
+		fmt.Println("  ubi-extract --detect <firmware>")
 		os.Exit(1)
 	}
 	
-	input := os.Args[1]
-	outputDir := "ubi-extracted"
-	if len(os.Args) > 2 {
-		outputDir = os.Args[2]
+	switch os.Args[1] {
+	case "--info":
+		if len(os.Args) < 3 { fmt.Println("Usage: ubi-extract --info <image>"); os.Exit(1) }
+		showInfo(os.Args[2])
+	case "--detect":
+		if len(os.Args) < 3 { fmt.Println("Usage: ubi-extract --detect <firmware>"); os.Exit(1) }
+		detectUBI(os.Args[2])
+	default:
+		extract(os.Args[1], func() string {
+			if len(os.Args) > 2 { return os.Args[2] }
+			return "ubi-extracted"
+		}())
 	}
-	
-	fmt.Printf("📦 Parsing UBI image: %s\n", input)
-	
-	reader, err := ubi.NewReader(input)
-	if err != nil {
-		fmt.Printf("❌ Error: %v\n", err)
-		os.Exit(1)
-	}
+}
+
+func showInfo(path string) {
+	reader, err := ubiPkg.NewReader(path)
+	if err != nil { fmt.Printf("❌ %v\n", err); os.Exit(1) }
 	defer reader.Close()
-	
+
 	img, err := reader.Parse()
-	if err != nil {
-		fmt.Printf("❌ Parse error: %v\n", err)
-		os.Exit(1)
+	if err != nil { fmt.Printf("❌ %v\n", err); os.Exit(1) }
+
+	fmt.Printf("📦 UBI Image Info\n")
+	fmt.Printf("  Version:  %d\n", img.Version)
+	fmt.Printf("  PEB Size: %dKB\n", img.PEBSize/1024)
+	fmt.Printf("  LEB Size: %dKB\n", img.LEBSize/1024)
+	fmt.Printf("  Volumes:  %d\n\n", len(img.Volumes))
+
+	records, err := reader.ParseVolumeTable()
+	if err == nil && len(records) > 0 {
+		fmt.Printf("Volume Table:\n")
+		fmt.Print(ubiPkg.PrintVolumeTable(records))
 	}
-	
-	fmt.Printf("📊 UBI v%d, PEB %dKB, %d volumes\n", img.Version, img.PEBSize/1024, len(img.Volumes))
-	
-	if err := reader.ExtractAll(outputDir); err != nil {
-		fmt.Printf("❌ Extract error: %v\n", err)
-		os.Exit(1)
+}
+
+func detectUBI(path string) {
+	data, err := os.ReadFile(path)
+	if err != nil { fmt.Printf("❌ %v\n", err); os.Exit(1) }
+
+	offset := ubiPkg.FindUBIOffset(data)
+	if offset >= 0 {
+		fmt.Printf("✅ UBI found at offset 0x%X (%d)\n", offset, offset)
+	} else {
+		fmt.Println("❌ No UBI image found")
 	}
+
+	ubifsOffset := ubiPkg.FindUBIFSOffset(data)
+	if ubifsOffset >= 0 {
+		fmt.Printf("✅ UBIFS found at offset 0x%X (%d)\n", ubifsOffset, ubifsOffset)
+	}
+}
+
+func extract(input, outputDir string) {
+	fmt.Printf("📦 Parsing UBI: %s\n", input)
 	
-	fmt.Printf("✅ Extracted to: %s\n", outputDir)
+	reader, err := ubiPkg.NewReader(input)
+	if err != nil { fmt.Printf("❌ %v\n", err); os.Exit(1) }
+	defer reader.Close()
+
+	img, err := reader.Parse()
+	if err != nil { fmt.Printf("❌ %v\n", err); os.Exit(1) }
+
+	// Try to get volume names
+	reader.ParseVolumeTable()
+
+	os.MkdirAll(outputDir, 0755)
+
+	// Extract all volumes
+	for id, vol := range img.Volumes {
+		volName := vol.Name
+		if volName == "" { volName = fmt.Sprintf("volume_%d", id) }
+		
+		volPath := filepath.Join(outputDir, volName+".img")
+		reader.ExtractVolume(id, volPath)
+
+		// Try to parse as UBIFS
+		volData, err := os.ReadFile(volPath)
+		if err != nil { continue }
+
+		if ubiPkg.FindUBIFSOffset(volData) == 0 {
+			fmt.Printf("  📂 Volume %d (%s) contains UBIFS, extracting...\n", id, volName)
+			ubifsReader, err := ubifs.NewReader(volData)
+			if err != nil { continue }
+			
+			if err := ubifsReader.Parse(); err != nil {
+				fmt.Printf("  ⚠️  UBIFS parse warning: %v\n", err)
+			}
+			
+			ubifsDir := filepath.Join(outputDir, volName)
+			if err := ubifsReader.Extract(ubifsDir); err != nil {
+				fmt.Printf("  ⚠️  UBIFS extract warning: %v\n", err)
+			} else {
+				fmt.Printf("  ✅ UBIFS extracted to: %s\n", ubifsDir)
+			}
+		}
+	}
+
+	fmt.Printf("✅ Done: %s\n", outputDir)
 }
