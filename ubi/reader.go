@@ -67,6 +67,8 @@ func (r *Reader) parseInternal() (*Image, error) {
 	numPEBs := int(r.size) / pebSize
 	fmt.Printf("  UBI: %d PEBs, PEB size %dKB\n", numPEBs, pebSize/1024)
 	
+	// Scan ALL PEBs deterministically
+	validPEBs := 0
 	for i := 0; i < numPEBs; i++ {
 		offset := int64(i) * int64(pebSize)
 		
@@ -126,10 +128,11 @@ func (r *Reader) parseInternal() (*Image, error) {
 		if !exists || vid.SqNum > 0 {
 			_ = existingData
 			img.Volumes[volID].LEBs[int(vid.LNum)] = data
+		validPEBs++
 		}
 	}
 	
-	fmt.Printf("  UBI: %d volumes found\n", len(img.Volumes))
+	fmt.Printf("  UBI: %d valid PEBs, %d volumes\n", validPEBs, len(img.Volumes))
 	for id, vol := range img.Volumes {
 		fmt.Printf("    Volume %d: %d LEBs (%s)\n", id, len(vol.LEBs),
 			func() string {
@@ -206,36 +209,43 @@ func (r *Reader) ExtractAll(outputDir string) error {
 
 // detectPEBSize finds the PEB size by looking for consecutive EC headers
 func (r *Reader) detectPEBSize() (int, error) {
-	// Common PEB sizes
+	// First, verify we have a valid EC header at offset 0
+	ec0, err := r.readECHeader(0)
+	if err != nil {
+		return 0, fmt.Errorf("no EC header at offset 0")
+	}
+	
+	// Use VID header offset and data offset from EC header
+	// PEB size = data_offset + LEB_size, but we need to find LEB size
+	// The simplest way: scan for the next EC header
 	candidates := []int{
-		128 * 1024,  // 128KB (most common)
+		128 * 1024,  // 128KB
+		64 * 1024,   // 64KB  
 		256 * 1024,  // 256KB
-		64 * 1024,   // 64KB
 		512 * 1024,  // 512KB
 	}
 	
+	_ = ec0
+	
 	for _, size := range candidates {
-		if int64(size) > r.size {
-			continue
+		if int64(size*2) > r.size { continue }
+		
+		// Check multiple consecutive positions
+		valid := true
+		for i := 0; i < 5 && int64(i*size) < r.size; i++ {
+			_, err := r.readECHeader(int64(i * size))
+			if err != nil {
+				// Allow some bad PEBs but not the first 3
+				if i < 3 { valid = false; break }
+			}
 		}
 		
-		// Check if there's an EC header at offset 0 and at offset `size`
-		ec0, err := r.readECHeader(0)
-		if err != nil {
-			continue
+		if valid {
+			return size, nil
 		}
-		_ = ec0
-		
-		ec1, err := r.readECHeader(int64(size))
-		if err != nil {
-			continue
-		}
-		_ = ec1
-		
-		return size, nil
 	}
 	
-	return 0, fmt.Errorf("no valid PEB size found")
+	return 128 * 1024, nil // Default to 128KB
 }
 
 // readECHeader reads an EC header at the given offset
