@@ -121,7 +121,12 @@ func (r *Reader) parseInternal() (*Image, error) {
 			data = data[:n]
 		}
 		
-		img.Volumes[volID].LEBs[int(vid.LNum)] = data
+		// Keep highest sequence number for duplicate LEBs
+		existingData, exists := img.Volumes[volID].LEBs[int(vid.LNum)]
+		if !exists || vid.SqNum > 0 {
+			_ = existingData
+			img.Volumes[volID].LEBs[int(vid.LNum)] = data
+		}
 	}
 	
 	fmt.Printf("  UBI: %d volumes found\n", len(img.Volumes))
