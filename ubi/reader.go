@@ -111,8 +111,15 @@ func (r *Reader) parseInternal() (*Image, error) {
 			dataSize = int(vid.DataSize)
 		}
 		
+		if dataOffset+int64(dataSize) > r.size {
+			dataSize = int(r.size - dataOffset)
+		}
+		if dataSize <= 0 { continue }
 		data := make([]byte, dataSize)
-		r.file.ReadAt(data, dataOffset)
+		n, _ := r.file.ReadAt(data, dataOffset)
+		if n < dataSize {
+			data = data[:n]
+		}
 		
 		img.Volumes[volID].LEBs[int(vid.LNum)] = data
 	}
@@ -162,6 +169,7 @@ func (r *Reader) ExtractVolume(volID int, outputPath string) (err error) {
 	totalWritten := 0
 	for _, n := range lebNums {
 		data := vol.LEBs[n]
+		if len(data) == 0 { continue }
 		written, err := out.Write(data)
 		if err != nil {
 			return err
@@ -254,6 +262,9 @@ func (r *Reader) readECHeader(offset int64) (*ECHeader, error) {
 
 // readVIDHeader reads a VID header at the given offset
 func (r *Reader) readVIDHeader(offset int64) (*VIDHeader, error) {
+	if offset < 0 || offset+int64(UBI_VID_HDR_SIZE) > r.size {
+		return nil, fmt.Errorf("VID header offset out of bounds")
+	}
 	var vid VIDHeader
 	
 	buf := make([]byte, UBI_VID_HDR_SIZE)
