@@ -105,10 +105,10 @@ UBIFS filesystem lives inside a UBI volume.
 - [x] Wear leveling analysis (EC statistics, health assessment)
 - [x] CRC32 validation (EC header, VID header)
 - [x] UBI/UBIFS detection in firmware binaries
-- [ ] LZO decompression (native Go)
-- [ ] ZSTD decompression for UBIFS
-- [ ] Extended attributes
-- [ ] Orphan handling
+- [x] LZO decompression (native Go)
+- [x] ZSTD decompression for UBIFS
+- [x] Extended attributes
+- [x] Orphan handling
 
 ## License
 

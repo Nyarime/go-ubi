@@ -20,6 +20,8 @@ type Reader struct {
 	inodes   map[uint64]*InodeNode
 	dentries map[uint64][]DentNode
 	fileData map[uint64][]byte
+	xattrs   map[uint64][]XAttrEntry
+	orphans  []uint64
 }
 
 // NewReader creates a UBIFS reader from volume data
@@ -94,6 +96,8 @@ func (r *Reader) Parse() error {
 			r.parseDent(nodeData)
 		case UBIFS_DATA_NODE:
 			r.parseDataNode(nodeData)
+		case UBIFS_XENT_NODE:
+			r.parseXEntry(nodeData)
 		}
 
 		nodeCount++
@@ -245,9 +249,19 @@ func (r *Reader) parseDataNode(data []byte) {
 			fileData = decompressed
 		}
 	case UBIFS_COMPR_LZO:
-		// LZO decompression - simplified
-		fileData = make([]byte, len(compData))
-		copy(fileData, compData)
+		if decompressed, err := decompressLZO(compData); err == nil && len(decompressed) > 0 {
+			fileData = decompressed
+		} else {
+			fileData = make([]byte, len(compData))
+			copy(fileData, compData)
+		}
+	case UBIFS_COMPR_ZSTD:
+		if decompressed, err := decompressZstdSimple(compData); err == nil {
+			fileData = decompressed
+		} else {
+			fileData = make([]byte, len(compData))
+			copy(fileData, compData)
+		}
 	default:
 		fileData = make([]byte, len(compData))
 		copy(fileData, compData)
