@@ -65,7 +65,13 @@ func (r *Reader) parseInternal() (*Image, error) {
 	
 	// Scan all PEBs
 	numPEBs := int(r.size) / pebSize
+	remainder := int(r.size) % pebSize
 	fmt.Printf("  UBI: %d PEBs, PEB size %dKB\n", numPEBs, pebSize/1024)
+	
+	// Block alignment check (like Python ubi_reader)
+	if remainder != 0 {
+		fmt.Printf("  ⚠️  WARNING: file size not block aligned (remainder: %d bytes), could mean missing data\n", remainder)
+	}
 	
 	// Scan ALL PEBs deterministically
 	validPEBs := 0
