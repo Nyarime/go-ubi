@@ -106,7 +106,8 @@ UBIFS filesystem lives inside a UBI volume.
 - [x] CRC32 validation (EC header, VID header)
 - [x] UBI/UBIFS detection in firmware binaries
 - [x] LZO decompression (native Go)
-- [x] ZSTD decompression for UBIFS
+- [x] ZSTD decompression (native Go, full implementation)
+- [x] LZ4 decompression (native Go)
 - [x] Extended attributes
 - [x] Orphan handling
 

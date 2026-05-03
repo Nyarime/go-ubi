@@ -20,6 +20,7 @@ const (
 	UBIFS_COMPR_LZO  = 1
 	UBIFS_COMPR_ZLIB = 2
 	UBIFS_COMPR_ZSTD = 3
+	UBIFS_COMPR_LZ4  = 4
 	
 	// Inode types
 	UBIFS_ITYPE_REG  = 0 // Regular file

@@ -258,6 +258,10 @@ func (r *Reader) parseDataNode(data []byte) {
 	case UBIFS_COMPR_ZSTD:
 		if decompressed, err := decompressZstdSimple(compData); err == nil {
 			fileData = decompressed
+		}
+	case UBIFS_COMPR_LZ4:
+		if decompressed, err := lz4BlockDecompress(compData); err == nil {
+			fileData = decompressed
 		} else {
 			fileData = make([]byte, len(compData))
 			copy(fileData, compData)
